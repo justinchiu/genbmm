@@ -9,6 +9,17 @@ sys.path.append('/tvm/topi/python')
 sys.path.append('/tvm/vta/python')
 os.environ['TVM_HOME'] = '/tvm'
 
+TVM_HOME = "/n/home13/jchiu/python/tvm"
+sys.path.append(f'{TVM_HOME}/python')
+sys.path.append(f'{TVM_HOME}/topi/python')
+sys.path.append(f'{TVM_HOME}/vta/python')
+os.environ['TVM_HOME'] = TVM_HOME
+os.environ['LD_LIBRARY_PATH'] = (
+    os.environ['LD_LIBRARY_PATH']
+    + f":{TVM_HOME}/build"
+    #+ os.environ["LLVM_LIB"]
+)
+
 import tvm
 from tvm import autotvm
 
@@ -133,7 +144,7 @@ def logsummul(dtype):
 
 
 task = autotvm.task.create(logsummul, args=('float32',), target='cuda', target_host="llvm")
-with autotvm.apply_history_best('best.log'):
+with autotvm.apply_history_best('best_logbmm.log'):
     with tvm.target.create("cuda"):
         s_mult, arg_bufs = logsummul('float32')
         mod = tvm.build(s_mult, arg_bufs, target="cuda", target_host="llvm")
@@ -167,8 +178,8 @@ if __name__ == "__main__":
             a, b, c = [constructor(x) for x in (a, b, c)]
         return a, b, c
 
-    autotvm.record.pick_best("matmul.log", "best.log")
-    with autotvm.apply_history_best('best.log'):
+    autotvm.record.pick_best("matmul.log", "best_logbmm.log")
+    with autotvm.apply_history_best('best_logbmm.log'):
         with tvm.target.create("cuda"):
             s_mult, arg_bufs = logsummul('float32')
             mod = tvm.build(s_mult, arg_bufs, target="cuda", target_host="llvm")
