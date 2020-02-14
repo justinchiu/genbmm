@@ -60,7 +60,7 @@ def fwdbwd(x):
 
 T = 8
 N = 4
-K = 16
+K = 128
 V = 64
 
 obs = torch.distributions.Categorical(probs = torch.ones(V)).sample((N, T))
@@ -133,7 +133,9 @@ print(allclose)
 print((pz_x[:,1:] - edge_marginals).abs().max())
 
 # time, batch, size, size
-from hmm2 import fb, hmm_pytorch
+#from hmm2 import get_fb
+from hmm3 import get_fb
+fb = get_fb(K)
 marginals, alphas1, betas1 = fb(ts_chain.float().cuda())
 print(f"Marginals match: {torch.allclose(ts_marginals.float().cuda(), marginals, rtol=1e-4, atol=1e-6)}")
 print(f"Zx match: {torch.allclose(alphas1[-1].logsumexp(-1).cpu().double(), Zx)}")

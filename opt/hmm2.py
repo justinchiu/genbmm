@@ -103,9 +103,15 @@ def hmm_runner(dtype, nn):
     ko2, ki2 = s[M2].split(s[M2].op.reduce_axis[0], nparts=num_thread_y)
     MLF2 = s.rfactor(M2, ko2)
 
+    block_z = tvm.thread_axis((0, 32), "blockIdx.z")
+    #thread_z = tvm.thread_axis((0, 1), "threadIdx.z")
+
     block_x = tvm.thread_axis((0, num_sm), "blockIdx.x")
     thread_x = tvm.thread_axis((0, num_thread_x), "threadIdx.x")
     thread_y = tvm.thread_axis((0, num_thread_y), "threadIdx.y")
+
+    batch = s[s_init].op.axis[1]
+
     if PERSIST_KERNEL:
         s[s_scan.op].env_threads([block_x, thread_y, thread_x])
 
@@ -114,10 +120,16 @@ def hmm_runner(dtype, nn):
     s[s_init].bind(bx, block_x)
     s[s_init].bind(tx, thread_x)
 
+    s[s_init].bind(batch, block_z)
+    #s[s_init].bind(batch, thread_z)
+
+    batch = C.op.axis[1]
     bx, xi = s[CL].split(s[CL].op.axis[2], nparts=num_sm)
     tx, xi = s[CL].split(xi, nparts=num_thread_x)
     s[CL].bind(bx, block_x)
     s[CL].bind(tx, thread_x)
+    s[CL].bind(batch, block_z)
+    #s[CL].bind(batch, thread_z)
     #s[CL].bind(s[M2].op.reduce_axis[0], thread_y)
 
     s[M].compute_at(s[CL], tx)
