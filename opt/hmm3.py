@@ -146,22 +146,39 @@ def get_fb(size):
 
     # if the padding doesn't make a difference this must be an inclusive scan
     # x: batch x time x zt x zt-1
-    def fb(x):
+    def fb(x, mask=None):
         batch, time, size, _ = x.shape
         # need time x batch x zt-1, zt
         x = x.permute(1, 0, 3, 2)
-        out = torch.zeros(time+1, batch, size).to(x.device)
-        hmm_pytorch(log_eye_cat(x), out)
+        if mask is not None:
+            mask = mask.t()
+            x = x.masked_scatter(
+                ~mask[1:,:,None,None],
+                log_eye(128, dtype=x.dtype, device=x.device)
+                [None,None].expand(x.shape),
+            )
 
-        out2 = torch.zeros(time+1, batch, size).to(x.device)
-        hmm_pytorch(log_eye_cat(x.flip(0).transpose(-2, -1)), out2)
+        out_fb = torch.zeros(time+1, batch * 2, size).to(x.device)
+        hmm_pytorch(
+            torch.cat([
+                log_eye_cat(x),
+                log_eye_cat(x.flip(0).transpose(-2, -1)),
+            ], 1),
+            out_fb,
+        )
+        alphas = out_fb[:, :batch]
+        betas = out_fb[:, batch:].flip(0)
 
-        marginals = torch.exp(out[:-1].view(time, batch, size, 1) +
-                              out2[:-1].flip(0).view(time, batch, 1, size) +
-                              x - out[-1].logsumexp(-1).view(1, -1, 1, 1))
+        marginals = torch.exp(
+            alphas[:-1].view(time, batch, size, 1) +
+            betas[1:].view(time, batch, 1, size) +
+            x - alphas[-1].logsumexp(-1).view(1, -1, 1, 1)
+        )
+        if mask is not None:
+            marginals.masked_fill_(~mask[1:,:,None,None], 0)
 
         # switch back marginals: batch x time x zt x zt-1
-        return marginals.permute(1, 0, 3, 2), out, out2
+        return marginals.permute(1, 0, 3, 2), alphas, betas
 
     return fb
 

@@ -136,6 +136,6 @@ print((pz_x[:,1:] - edge_marginals).abs().max())
 #from hmm2 import get_fb
 from hmm3 import get_fb
 fb = get_fb(K)
-marginals, alphas1, betas1 = fb(ts_chain.float().cuda())
+marginals, alphas, betas = fb(ts_chain.float().cuda())
 print(f"Marginals match: {torch.allclose(ts_marginals.float().cuda(), marginals, rtol=1e-4, atol=1e-6)}")
-print(f"Zx match: {torch.allclose(alphas1[-1].logsumexp(-1).cpu().double(), Zx)}")
+print(f"Zx match: {torch.allclose(alphas[-1].logsumexp(-1).cpu().double(), Zx)}")
