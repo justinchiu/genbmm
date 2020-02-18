@@ -154,7 +154,7 @@ def get_fb(size):
             mask = mask.t()
             x = x.masked_scatter(
                 ~mask[1:,:,None,None],
-                log_eye(128, dtype=x.dtype, device=x.device)
+                log_eye(size, dtype=x.dtype, device=x.device)
                 [None,None].expand(x.shape),
             )
 
