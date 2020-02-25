@@ -169,16 +169,19 @@ def get_fb(size):
         alphas = out_fb[:, :batch]
         betas = out_fb[:, batch:].flip(0)
 
-        marginals = torch.exp(
+        log_marginals = (
             alphas[:-1].view(time, batch, size, 1) +
             betas[1:].view(time, batch, 1, size) +
             x - alphas[-1].logsumexp(-1).view(1, -1, 1, 1)
         )
         if mask is not None:
-            marginals.masked_fill_(~mask[1:,:,None,None], 0)
+            #marginals.masked_fill_(~mask[1:,:,None,None], 0)
+            log_marginals.masked_fill_(~mask[1:,:,None,None], float("-inf"))
+        log_marginals = log_marginals.permute(1, 0, 3, 2)
+        marginals = log_marginals.exp()
 
         # switch back marginals: batch x time x zt x zt-1
-        return marginals.permute(1, 0, 3, 2), alphas, betas
+        return marginals, alphas, betas, log_marginals
 
     return fb
 
