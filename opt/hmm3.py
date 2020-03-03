@@ -158,7 +158,8 @@ def get_fb(size):
                 [None,None].expand(x.shape),
             )
 
-        out_fb = torch.zeros(time+1, batch * 2, size).to(x.device)
+        out_fb = torch.empty(time+1, batch * 2, size).to(x.device)
+        out_fb.fill_(float("-inf"))
         hmm_pytorch(
             torch.cat([
                 log_eye_cat(x),
