@@ -23,7 +23,7 @@ os.environ['LD_LIBRARY_PATH'] = (
 import tvm
 from tvm import autotvm
 
-sizes = [64, 128, 256, 512, 1024]
+sizes = [32, 64, 128, 256, 512, 1024]
 
 @autotvm.template
 def hmm_runner(dtype, nn):
@@ -138,11 +138,17 @@ def log_eye_cat(x):
 from tvm.contrib.dlpack import to_pytorch_func
 
 def get_fb(size):
+    """
     with autotvm.apply_history_best(f'best_hmm_k{size}.log'):
         with tvm.target.create("cuda"):
             s_mult, arg_bufs = hmm_runner('float32', size)
             mod = tvm.build(s_mult, arg_bufs, target="cuda", target_host="llvm")
             hmm_pytorch = to_pytorch_func(mod)
+    """
+    with tvm.target.create("cuda"):
+        s_mult, arg_bufs = hmm_runner('float32', size)
+        mod = tvm.build(s_mult, arg_bufs, target="cuda", target_host="llvm")
+        hmm_pytorch = to_pytorch_func(mod)
 
     # if the padding doesn't make a difference this must be an inclusive scan
     # x: batch x time x zt x zt-1
