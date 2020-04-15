@@ -154,41 +154,64 @@ def get_fb(size):
     # x: batch x time x zt x zt-1
     def fb(x, mask=None):
         batch, time, size, _ = x.shape
+        lex = log_eye(size, dtype=x.dtype, device=x.device)
         # need time x batch x zt-1, zt
         x = x.permute(1, 0, 3, 2)
         if mask is not None:
             mask = mask.t()
-            x = x.masked_scatter(
+            x.masked_scatter_(
                 ~mask[1:,:,None,None],
-                log_eye(size, dtype=x.dtype, device=x.device)
-                [None,None].expand(x.shape),
+                lex[None,None].expand(x.shape),
             )
 
-        out_fb = torch.empty(time+1, batch * 2, size).to(x.device)
+        """
+        out_fb = torch.empty(time+1, batch * 2, size, device=x.device)
         out_fb.fill_(float("-inf"))
         hmm_pytorch(
-            torch.cat([
-                log_eye_cat(x),
-                log_eye_cat(x.flip(0).transpose(-2, -1)),
-            ], 1),
+            log_eye_cat(torch.cat([x, x.flip(0).transpose(-2, -1)], 1)),
             out_fb,
+        )
+
+        out_fb2 = torch.empty(time+1, batch * 2, size, device=x.device)
+        out_fb2.fill_(float("-inf"))
+        hmm_pytorch(
+            log_eye_cat(x),
+            out_fb2[:,:batch],
+        )
+        hmm_pytorch(
+            log_eye_cat(x.flip(0).transpose(-2, -1)),
+            out_fb2[:,batch:],
         )
         alphas = out_fb[:, :batch]
         betas = out_fb[:, batch:].flip(0)
+        """
 
-        log_marginals = (
-            alphas[:-1].view(time, batch, size, 1) +
-            betas[1:].view(time, batch, 1, size) +
-            x - alphas[-1].logsumexp(-1).view(1, -1, 1, 1)
-        )
+        out_fb = torch.empty(2, time+1, batch, size, device=x.device)
+        out_fb.fill_(float("-inf"))
+        inp = torch.empty(time+1, batch, size, size, device=x.device)
+        inp[-1] = lex
+        # forward
+        inp[:-1] = x
+        hmm_pytorch(inp, out_fb[0])
+        # backward
+        inp[range(time-1, -1, -1)] = x.transpose(-2, -1)
+        hmm_pytorch(inp, out_fb[1])
+
+        alphas = out_fb[0]
+        betas = out_fb[1].flip(0) # pay the memory cost here
+        # not sure if i can flip the argument to hmm_pytorch
+
+        log_marginals = x
+        log_marginals += alphas[:-1].view(time, batch, size, 1)
+        log_marginals += betas[1:].view(time, batch, 1, size)
+        log_marginals -= alphas[-1].logsumexp(-1).view(1, -1, 1, 1)
         if mask is not None:
-            #marginals.masked_fill_(~mask[1:,:,None,None], 0)
             log_marginals.masked_fill_(~mask[1:,:,None,None], float("-inf"))
         log_marginals = log_marginals.permute(1, 0, 3, 2)
-        marginals = log_marginals.exp()
-
+        return log_marginals, alphas
+        #marginals = log_marginals.exp()
         # switch back marginals: batch x time x zt x zt-1
-        return marginals, alphas, betas, log_marginals
+        #return marginals, alphas, betas, log_marginals
 
     return fb
 
