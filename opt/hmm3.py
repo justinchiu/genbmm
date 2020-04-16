@@ -4,6 +4,8 @@ import time
 import torch
 import numpy as np
 
+from pytorch_memlab import profile
+
 sys.path.append('/tvm/python')
 sys.path.append('/tvm/topi/python')
 sys.path.append('/tvm/vta/python')
@@ -152,6 +154,7 @@ def get_fb(size):
 
     # if the padding doesn't make a difference this must be an inclusive scan
     # x: batch x time x zt x zt-1
+    #@profile
     def fb(x, mask=None):
         batch, time, size, _ = x.shape
         lex = log_eye(size, dtype=x.dtype, device=x.device)
@@ -159,10 +162,15 @@ def get_fb(size):
         x = x.permute(1, 0, 3, 2)
         if mask is not None:
             mask = mask.t()
+            x[~mask[1:]] = lex
+            """
             x.masked_scatter_(
                 ~mask[1:,:,None,None],
+                # EXPAND HERE IS BAD?
                 lex[None,None].expand(x.shape),
             )
+            import pdb; pdb.set_trace()
+            """
 
         """
         out_fb = torch.empty(time+1, batch * 2, size, device=x.device)
