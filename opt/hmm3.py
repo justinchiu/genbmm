@@ -24,10 +24,12 @@ os.environ['LD_LIBRARY_PATH'] = (
 
 import tvm
 from tvm import autotvm
+import tvm.runtime
+import tvm.te
 
 sizes = [32, 64, 128, 256, 512, 1024]
 
-@autotvm.template
+@autotvm.template("hmm_runner")
 def hmm_runner(dtype, nn):
     #n_num_step = 128
     #n_num_hidden = 1152
@@ -38,38 +40,38 @@ def hmm_runner(dtype, nn):
     #nn = 128
     #bb = 32
     #tt = 128
-    n = tvm.convert(nn)
+    n = tvm.runtime.convert(nn)
     m = n
 
-    b = tvm.var("batch")
-    t = tvm.var("num_step")
+    b = tvm.te.var("batch")
+    t = tvm.te.var("num_step")
     l = n
-    k = tvm.reduce_axis((0, l), name='k')
-    k2 = tvm.reduce_axis((0, l), name='k2')
-    #X = tvm.placeholder((t-1, b, n, m), name="X", dtype=dtype)
-    X = tvm.placeholder((t, b, n, m), name="X", dtype=dtype)
+    k = tvm.te.reduce_axis((0, l), name='k')
+    k2 = tvm.te.reduce_axis((0, l), name='k2')
+    #X = tvm.te.placeholder((t-1, b, n, m), name="X", dtype=dtype)
+    X = tvm.te.placeholder((t, b, n, m), name="X", dtype=dtype)
 
-    s_state = tvm.placeholder((t, b, n))
-    s_init = tvm.compute((1, b, n), lambda a, b, c: 0.0)
-    M = tvm.compute(
+    s_state = tvm.te.placeholder((t, b, n))
+    s_init = tvm.te.compute((1, b, n), lambda a, b, c: 0.0)
+    M = tvm.te.compute(
         (t, b, n),
-        lambda t, bb, ii: tvm.max(s_state[t-1, bb, k] + X[t-1, bb, k, ii], axis=k),
+        lambda t, bb, ii: tvm.te.max(s_state[t-1, bb, k] + X[t-1, bb, k, ii], axis=k),
         name="M")
 
-    M2 = tvm.compute(
+    M2 = tvm.te.compute(
         (t, b, n),
-        lambda t, bb, ii: tvm.sum(tvm.exp(s_state[t-1, bb, k2] + X[t-1, bb, k2, ii]
+        lambda t, bb, ii: tvm.te.sum(tvm.te.exp(s_state[t-1, bb, k2] + X[t-1, bb, k2, ii]
                                             - M[t, bb, ii]), axis=k2),
         name="M2")
-    C = tvm.compute(
+    C = tvm.te.compute(
         (t, b, n),
         #lambda t, bb, ii: M[t, bb, ii] + M2[t, bb,ii],
-        lambda t, bb, ii: tvm.log(M2[t, bb, ii]) + M[t, bb, ii],
+        lambda t, bb, ii: tvm.te.log(M2[t, bb, ii]) + M[t, bb, ii],
         name='C')
 
-    s_scan = tvm.scan(s_init, C, s_state, inputs=[X])
+    s_scan = tvm.te.scan(s_init, C, s_state, inputs=[X])
 
-    s = tvm.create_schedule(s_scan.op)
+    s = tvm.te.create_schedule(s_scan.op)
     #tvm.lower(s, [X], simple_mode=True )
 
     cfg = autotvm.get_config()
@@ -86,7 +88,7 @@ def hmm_runner(dtype, nn):
     DETECT_GLOBAL_BARRIER = False
     detect_global_barrier = DETECT_GLOBAL_BARRIER
 
-    s = tvm.create_schedule(s_scan.op)
+    s = tvm.te.create_schedule(s_scan.op)
     CL = C
     SS = s.cache_read(s_state, "shared", [M, M2])
     #SL = s.cache_read(SS, "local", [M])
@@ -95,10 +97,10 @@ def hmm_runner(dtype, nn):
 
     WhhL = s.cache_read(X, "local", [M, M2])
 
-    block_x = tvm.thread_axis((0, num_sm), "blockIdx.x")
-    thread_x = tvm.thread_axis((0, num_thread_x), "threadIdx.x")
-    block_y = tvm.thread_axis((0, b), "blockIdx.y")
-    thread_y = tvm.thread_axis((0, 1), "threadIdx.y")
+    block_x = tvm.te.thread_axis((0, num_sm), "blockIdx.x")
+    thread_x = tvm.te.thread_axis((0, num_thread_x), "threadIdx.x")
+    block_y = tvm.te.thread_axis((0, b), "blockIdx.y")
+    thread_y = tvm.te.thread_axis((0, 1), "threadIdx.y")
 
     batch = s[s_init].op.axis[1]
     h = s[s_init].op.axis[2]
